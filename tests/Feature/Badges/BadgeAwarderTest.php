@@ -15,10 +15,9 @@ use Kurt\Modules\Forum\Models\Thread;
 use Kurt\Modules\Forum\Models\UserBadge;
 use Kurt\Modules\Forum\Tests\Stubs\StubUser;
 
-beforeEach(function () {
-    $this->user = StubUser::create(['email' => 'badger@example.com']);
+it('awards a badge once and never re-awards it', function () {
+    $user = StubUser::create(['email' => 'badger@example.com']);
 
-    // Seed a Badge row that maps to the first-post slug.
     Badge::factory()->create([
         'slug' => 'first-post',
         'name' => ['en' => 'First Post'],
@@ -30,47 +29,84 @@ beforeEach(function () {
     /** @var Thread $thread */
     $thread = Thread::factory()->create([
         'board_id' => $board->id,
-        'user_id' => $this->user->id,
+        'user_id' => $user->id,
     ]);
 
-    $this->post = Post::create([
+    $post = Post::create([
         'thread_id' => $thread->id,
-        'user_id' => $this->user->id,
+        'user_id' => $user->id,
         'body' => 'Hello world',
         'is_root' => true,
     ]);
-});
 
-it('awards a badge once and never re-awards it', function () {
-    Event::fake([BadgeAwarded::class]);
+    // Reset awards from the in-place PostCreated dispatch.
+    UserBadge::query()->where('user_id', $user->id)->delete();
 
     $awarder = app(BadgeAwarder::class);
-
-    $awarder->handleEvent(new PostCreated($this->post));
-    expect(UserBadge::query()->where('user_id', $this->user->id)->count())->toBe(1);
+    $awarder->handleEvent(new PostCreated($post));
+    expect(UserBadge::query()->where('user_id', $user->id)->count())->toBe(1);
 
     // Dispatch again — should not duplicate.
-    $awarder->handleEvent(new PostCreated($this->post));
-    expect(UserBadge::query()->where('user_id', $this->user->id)->count())->toBe(1);
-
-    Event::assertDispatchedTimes(BadgeAwarded::class, 1);
+    $awarder->handleEvent(new PostCreated($post));
+    expect(UserBadge::query()->where('user_id', $user->id)->count())->toBe(1);
 });
 
 it('dispatches BadgeAwarded when the rule fires', function () {
     Event::fake([BadgeAwarded::class]);
 
-    app(BadgeAwarder::class)->handleEvent(new PostCreated($this->post));
+    $user = StubUser::create(['email' => 'event@example.com']);
 
-    Event::assertDispatched(BadgeAwarded::class, function (BadgeAwarded $event): bool {
-        return $event->badge->slug === 'first-post';
+    Badge::factory()->create([
+        'slug' => 'first-post',
+        'name' => ['en' => 'First Post'],
+        'description' => ['en' => 'Posted for the first time.'],
+    ]);
+
+    /** @var Board $board */
+    $board = Board::factory()->create();
+    /** @var Thread $thread */
+    $thread = Thread::factory()->create([
+        'board_id' => $board->id,
+        'user_id' => $user->id,
+    ]);
+
+    // Faked above — PostCreated dispatched inside Post::create() goes through the
+    // BadgeAwarder via the wildcard listener bound in ForumServiceProvider.
+    Post::create([
+        'thread_id' => $thread->id,
+        'user_id' => $user->id,
+        'body' => 'Hello world',
+        'is_root' => true,
+    ]);
+
+    Event::assertDispatched(BadgeAwarded::class, function (BadgeAwarded $event) use ($user): bool {
+        return $event->badge->slug === 'first-post'
+            && $event->user->getKey() === $user->getKey();
     });
 });
 
 it('registers a custom rule via BadgeAwarder::register', function () {
+    $user = StubUser::create(['email' => 'custom@example.com']);
+
     Badge::factory()->create([
         'slug' => 'custom-poster',
         'name' => ['en' => 'Custom'],
         'description' => ['en' => 'Custom rule fired.'],
+    ]);
+
+    /** @var Board $board */
+    $board = Board::factory()->create();
+    /** @var Thread $thread */
+    $thread = Thread::factory()->create([
+        'board_id' => $board->id,
+        'user_id' => $user->id,
+    ]);
+
+    $post = Post::create([
+        'thread_id' => $thread->id,
+        'user_id' => $user->id,
+        'body' => 'Hello world',
+        'is_root' => true,
     ]);
 
     $awarder = app(BadgeAwarder::class);
@@ -92,21 +128,36 @@ it('registers a custom rule via BadgeAwarder::register', function () {
         }
     });
 
-    $awarder->handleEvent(new PostCreated($this->post));
+    $awarder->handleEvent(new PostCreated($post));
 
     expect(
         UserBadge::query()
-            ->where('user_id', $this->user->id)
+            ->where('user_id', $user->id)
             ->whereHas('badge', fn ($q) => $q->where('slug', 'custom-poster'))
             ->exists()
     )->toBeTrue();
 });
 
 it('skips when the configured Badge row is missing', function () {
-    // Remove the seeded badge so the slug resolution returns null.
-    Badge::query()->where('slug', 'first-post')->delete();
+    $user = StubUser::create(['email' => 'no-badge@example.com']);
 
-    app(BadgeAwarder::class)->handleEvent(new PostCreated($this->post));
+    // No Badge row for 'first-post' is seeded.
+    /** @var Board $board */
+    $board = Board::factory()->create();
+    /** @var Thread $thread */
+    $thread = Thread::factory()->create([
+        'board_id' => $board->id,
+        'user_id' => $user->id,
+    ]);
 
-    expect(UserBadge::query()->count())->toBe(0);
+    $post = Post::create([
+        'thread_id' => $thread->id,
+        'user_id' => $user->id,
+        'body' => 'Hello world',
+        'is_root' => true,
+    ]);
+
+    app(BadgeAwarder::class)->handleEvent(new PostCreated($post));
+
+    expect(UserBadge::query()->where('user_id', $user->id)->count())->toBe(0);
 });

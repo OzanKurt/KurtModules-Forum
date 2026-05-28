@@ -30,6 +30,8 @@ use Spatie\MediaLibrary\InteractsWithMedia;
  * @property int $user_id
  * @property string $body
  * @property bool $is_root
+ * @property CarbonInterface|null $created_at
+ * @property CarbonInterface|null $updated_at
  * @property CarbonInterface|null $edited_at
  * @property int|null $edited_by
  * @property int $score

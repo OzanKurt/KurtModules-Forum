@@ -84,32 +84,32 @@ final class BadgeAwarder
      */
     private function resolveUser(object $event): ?Model
     {
-        if (isset($event->user) && $event->user instanceof Model) {
-            return $event->user;
+        $user = $this->property($event, 'user');
+        if ($user instanceof Model) {
+            return $user;
         }
 
-        if (isset($event->post) && $event->post instanceof Model) {
-            /** @var Model|null $owner */
-            $owner = $event->post->user;
+        $post = $this->property($event, 'post');
+        if ($post instanceof Model) {
+            $owner = $this->property($post, 'user');
             if ($owner instanceof Model) {
                 return $owner;
             }
         }
 
-        if (isset($event->thread) && $event->thread instanceof Model) {
-            /** @var Model|null $owner */
-            $owner = $event->thread->user;
+        $thread = $this->property($event, 'thread');
+        if ($thread instanceof Model) {
+            $owner = $this->property($thread, 'user');
             if ($owner instanceof Model) {
                 return $owner;
             }
         }
 
-        if (isset($event->vote) && $event->vote instanceof Model) {
-            /** @var Model|null $post */
-            $post = $event->vote->post;
+        $vote = $this->property($event, 'vote');
+        if ($vote instanceof Model) {
+            $post = $this->property($vote, 'post');
             if ($post instanceof Model) {
-                /** @var Model|null $owner */
-                $owner = $post->user;
+                $owner = $this->property($post, 'user');
                 if ($owner instanceof Model) {
                     return $owner;
                 }
@@ -117,5 +117,14 @@ final class BadgeAwarder
         }
 
         return null;
+    }
+
+    private function property(object $object, string $name): mixed
+    {
+        if ($object instanceof Model) {
+            return $object->getAttribute($name);
+        }
+
+        return property_exists($object, $name) ? $object->{$name} : null;
     }
 }
