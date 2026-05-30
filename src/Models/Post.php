@@ -67,6 +67,12 @@ class Post extends Model implements HasMedia
         'reported_count' => 'integer',
     ];
 
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection('attachments')
+            ->useDisk((string) config('forum.media.disk', 'public'));
+    }
+
     /**
      * @return BelongsTo<Thread, $this>
      */
