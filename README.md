@@ -67,9 +67,57 @@ interface BadgeRule
 
 `ForumServiceProvider` binds `BadgeAwarder` as a singleton, populates it from `config('forum.badges.rules')`, and listens to every dispatched event via a wildcard `Event::listen('*', ...)`. Inside `handleEvent`, the awarder iterates rules, resolves the user from the event payload, checks `UserBadge` for an existing award, and inserts a row plus dispatches `BadgeAwarded` if the rule evaluates true.
 
-## Filament
+## Filament admin
 
-Filament v3/v4/v5 admin resources are planned for v2.1. The package is headless in v2.0.
+The package ships parallel admin resource sets for Filament **v3, v4, and v5** —
+`BoardResource`, `ThreadResource`, `PostResource`, `ModerationReportResource`,
+`BadgeResource`, and `UserBadgeResource`. The correct set is chosen at runtime
+from the installed Filament major, so you register a single version-dispatching
+plugin on your panel:
+
+```php
+use Filament\Panel;
+use Kurt\Modules\Forum\Filament\ForumPlugin;
+
+public function panel(Panel $panel): Panel
+{
+    return $panel
+        // ...
+        ->plugin(ForumPlugin::make());
+}
+```
+
+`ForumPlugin::make()` resolves to the matching `V3`/`V4`/`V5` plugin via
+`Kurt\Modules\Core\Support\FilamentVersion`. Install whichever Filament major
+your app uses — the resources require nothing beyond what the module already
+depends on:
+
+```bash
+# whichever your app runs
+composer require filament/filament:"^3.0|^4.0|^5.0"
+composer require filament/spatie-laravel-media-library-plugin:"^3.0|^4.0|^5.0"
+```
+
+What the resources give you:
+
+- **Boards** — per-locale (en/tr) translatable name/description; state
+  (open/locked/archived) and visibility (public/unlisted/private) enum selects;
+  a parent-board select for the tree; a position field; a table with
+  state/visibility badges, parent, and the denormalised thread/post counters,
+  filtered by state and visibility.
+- **Threads** — title, board select, pinned/locked/hidden toggles and score; a
+  table with boolean moderation columns, reply count, score and last-post time,
+  filtered by board plus ternary pinned/locked/hidden filters.
+- **Posts** — thread select, body, `is_root` flag, score and a Spatie
+  media-library attachments upload; a moderation queue table sorted by
+  `reported_count` with a reports badge that turns red when non-zero.
+- **Moderation reports** — a queue defaulting to the pending bucket, with
+  resolve/dismiss row actions and resolve/dismiss/delete bulk actions wired to
+  the report state machine.
+- **Badges** — translatable name/description, rarity enum, icon and active flag,
+  with an awarded-count column.
+- **User badges** — a read-mostly list + view of awarded badges, filterable by
+  badge.
 
 ## License
 

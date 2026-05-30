@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-05-30
+
+### Added
+- Filament admin resources for **v3, v4, and v5** in parallel: `BoardResource`, `ThreadResource`, `PostResource`, `ModerationReportResource`, `BadgeResource`, `UserBadgeResource` under `src/Filament/V{3,4,5}`.
+- Version-dispatching `Kurt\Modules\Forum\Filament\ForumPlugin` facade — register `->plugin(ForumPlugin::make())` on your panel and the matching V{n} resource set is resolved from the installed Filament major via Core's `FilamentVersion`.
+- Board form with per-locale (en/tr) translatable name/description, state + visibility enum selects, parent-board select and position; Thread form with board select and pinned/locked/hidden toggles; Post form with thread select, `is_root` flag and a `SpatieMediaLibraryFileUpload` attachments collection; ModerationReport queue (defaulting to pending) with resolve/dismiss row + bulk actions; Badge form with rarity enum, icon and active flag; read-mostly UserBadge list + view.
+- Tables: Board state/visibility badges + thread/post counters; Thread boolean moderation columns with board + pinned/locked/hidden filters; Post queue sorted by `reported_count`; Badge rarity badge + awarded count.
+- `Post` gains an `attachments` media collection (disk from `forum.media.disk`).
+- `filament/spatie-laravel-media-library-plugin` (`^3.0 || ^4.0 || ^5.0`) added to `require-dev` for the post attachments upload.
+- Per-Filament-version PHPStan configs (`phpstan-filament-v{3,4,5}.neon`); the base `phpstan.neon` excludes the three version dirs and the dispatching facade.
+- CI matrix gains a Filament axis (`3.*`, `4.*`, `5.*`) with a per-major PHPStan step.
+
 ## [2.0.1] - 2026-05-30
 
 ### Fixed
