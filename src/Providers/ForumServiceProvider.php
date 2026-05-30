@@ -37,16 +37,7 @@ final class ForumServiceProvider extends PackageServiceProvider
             ->name('laravel-modules-forum')
             ->hasConfigFile('forum')
             ->hasTranslations()
-            ->hasMigrations([
-                'create_forum_boards_table',
-                'create_forum_threads_table',
-                'create_forum_posts_table',
-                'create_forum_votes_table',
-                'create_forum_subscriptions_table',
-                'create_forum_moderation_reports_table',
-                'create_forum_badges_table',
-                'create_forum_user_badges_table',
-            ])
+            ->discoversMigrations()
             ->hasCommands([
                 RecountCommand::class,
                 AwardBadgesCommand::class,
