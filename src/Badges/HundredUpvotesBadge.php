@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Kurt\Modules\Forum\Enums\VoteValue;
 use Kurt\Modules\Forum\Events\VoteCast;
+use Kurt\Modules\Forum\Models\Post;
 
 final class HundredUpvotesBadge implements BadgeRule
 {
@@ -26,10 +27,12 @@ final class HundredUpvotesBadge implements BadgeRule
 
     public function evaluate(Model $user, object $event): bool
     {
-        $upvotes = (int) DB::table('forum_votes')
-            ->join('forum_posts', 'forum_posts.id', '=', 'forum_votes.post_id')
+        $upvotes = (int) DB::table('interactions_interactions')
+            ->join('forum_posts', 'forum_posts.id', '=', 'interactions_interactions.subject_id')
+            ->where('interactions_interactions.subject_type', Post::class)
+            ->where('interactions_interactions.type', 'vote')
+            ->where('interactions_interactions.value', VoteValue::Up->value)
             ->where('forum_posts.user_id', $user->getKey())
-            ->where('forum_votes.value', VoteValue::Up->value)
             ->count();
 
         return $upvotes >= 100;

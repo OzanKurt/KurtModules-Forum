@@ -9,12 +9,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Kurt\Modules\Core\Contracts\UserResolver;
 use Kurt\Modules\Forum\Badges\BadgeAwarder;
+use Kurt\Modules\Forum\Enums\VoteValue;
 use Kurt\Modules\Forum\Events\PostCreated;
 use Kurt\Modules\Forum\Events\ThreadCreated;
 use Kurt\Modules\Forum\Events\VoteCast;
 use Kurt\Modules\Forum\Models\Post;
 use Kurt\Modules\Forum\Models\Thread;
-use Kurt\Modules\Forum\Models\Vote;
 
 final class AwardBadgesCommand extends Command
 {
@@ -83,16 +83,18 @@ final class AwardBadgesCommand extends Command
     private function replayVoteCast(Model $user, BadgeAwarder $awarder): void
     {
         // For Hundred-Upvotes: votes on posts authored by $user.
-        $voteIds = DB::table('forum_votes')
-            ->join('forum_posts', 'forum_posts.id', '=', 'forum_votes.post_id')
+        $votes = DB::table('interactions_interactions')
+            ->join('forum_posts', 'forum_posts.id', '=', 'interactions_interactions.subject_id')
+            ->where('interactions_interactions.subject_type', Post::class)
+            ->where('interactions_interactions.type', 'vote')
             ->where('forum_posts.user_id', $user->getKey())
-            ->pluck('forum_votes.id');
+            ->get(['interactions_interactions.subject_id as post_id', 'interactions_interactions.value as value']);
 
-        foreach ($voteIds as $id) {
-            /** @var Vote|null $vote */
-            $vote = Vote::query()->find($id);
-            if ($vote instanceof Vote) {
-                $awarder->handleEvent(new VoteCast($vote));
+        foreach ($votes as $row) {
+            /** @var Post|null $post */
+            $post = Post::query()->find($row->post_id);
+            if ($post instanceof Post) {
+                $awarder->handleEvent(new VoteCast($post, VoteValue::from((int) $row->value)));
             }
         }
     }

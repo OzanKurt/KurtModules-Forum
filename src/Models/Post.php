@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\DB;
 use Kurt\Modules\Core\Concerns\ResolvesUser;
@@ -20,6 +21,10 @@ use Kurt\Modules\Forum\Enums\VoteValue;
 use Kurt\Modules\Forum\Events\PostReported;
 use Kurt\Modules\Forum\Events\VoteCast;
 use Kurt\Modules\Forum\Events\VoteRevoked;
+use Kurt\Modules\Interactions\Engagement\Concerns\Voteable;
+use Kurt\Modules\Interactions\Engagement\Enums\InteractionType;
+use Kurt\Modules\Interactions\Engagement\InteractionManager;
+use Kurt\Modules\Interactions\Engagement\Models\Interaction;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 
@@ -39,7 +44,7 @@ use Spatie\MediaLibrary\InteractsWithMedia;
  * @property Thread $thread
  * @property Post|null $parent
  * @property Collection<int, Post> $replies
- * @property Collection<int, Vote> $votes
+ * @property Collection<int, Interaction> $votes
  */
 class Post extends Model implements HasMedia
 {
@@ -49,6 +54,7 @@ class Post extends Model implements HasMedia
     use InteractsWithMedia;
     use ResolvesUser;
     use SoftDeletes;
+    use Voteable;
 
     protected $table = 'forum_posts';
 
@@ -106,43 +112,43 @@ class Post extends Model implements HasMedia
     }
 
     /**
-     * @return HasMany<Vote, $this>
+     * Vote rows for this post — stored polymorphically by the Interactions module.
+     *
+     * @return MorphMany<Interaction, $this>
      */
-    public function votes(): HasMany
+    public function votes(): MorphMany
     {
-        return $this->hasMany(Vote::class);
+        return $this->receivedInteractions()->where('type', InteractionType::Vote->value);
     }
 
     /**
      * Cast a vote. Idempotent: casting the same value twice toggles the vote off.
-     * Returns the resulting Vote, or null if the vote was toggled off or rejected.
+     * Returns the resulting Interaction, or null if toggled off or rejected.
      */
-    public function vote(Model $user, VoteValue $value): ?Vote
+    public function vote(Model $user, VoteValue $value): ?Interaction
     {
         if (! (bool) config('forum.allow_self_vote') && $this->user_id === $user->getKey()) {
             return null;
         }
 
-        return DB::transaction(function () use ($user, $value): ?Vote {
-            /** @var Vote|null $existing */
+        return DB::transaction(function () use ($user, $value): ?Interaction {
+            $manager = app(InteractionManager::class);
+
+            /** @var Interaction|null $existing */
             $existing = $this->votes()->where('user_id', $user->getKey())->first();
 
-            if ($existing !== null && $existing->value === $value->value) {
-                $existing->delete();
+            if ($existing !== null && (int) $existing->value === $value->value) {
+                $manager->remove($user, $this, InteractionType::Vote);
                 $this->refreshScore();
                 VoteRevoked::dispatch($this, $user);
 
                 return null;
             }
 
-            /** @var Vote $vote */
-            $vote = $this->votes()->updateOrCreate(
-                ['user_id' => $user->getKey()],
-                ['value' => $value->value],
-            );
+            $vote = $manager->add($user, $this, InteractionType::Vote, $value->value);
 
             $this->refreshScore();
-            VoteCast::dispatch($vote);
+            VoteCast::dispatch($this, $value);
 
             return $vote;
         });

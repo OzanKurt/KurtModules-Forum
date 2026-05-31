@@ -9,8 +9,8 @@ use Kurt\Modules\Forum\Events\VoteRevoked;
 use Kurt\Modules\Forum\Models\Board;
 use Kurt\Modules\Forum\Models\Post;
 use Kurt\Modules\Forum\Models\Thread;
-use Kurt\Modules\Forum\Models\Vote;
 use Kurt\Modules\Forum\Tests\Stubs\StubUser;
+use Kurt\Modules\Interactions\Engagement\Models\Interaction;
 
 beforeEach(function () {
     $this->author = StubUser::create(['email' => 'author@example.com']);
@@ -34,14 +34,23 @@ beforeEach(function () {
     $this->post = $post;
 });
 
-it('creates an up vote and bumps the post score', function () {
+function forumVoteCount(Post $post): int
+{
+    return Interaction::query()
+        ->where('subject_type', Post::class)
+        ->where('subject_id', $post->id)
+        ->where('type', 'vote')
+        ->count();
+}
+
+it('creates an up vote (stored in Interactions) and bumps the post score', function () {
     Event::fake([VoteCast::class]);
 
     $vote = $this->post->vote($this->voter, VoteValue::Up);
 
-    expect($vote)->toBeInstanceOf(Vote::class);
+    expect($vote)->toBeInstanceOf(Interaction::class);
     expect($this->post->fresh()->score)->toBe(1);
-    expect(Vote::query()->where('post_id', $this->post->id)->count())->toBe(1);
+    expect(forumVoteCount($this->post))->toBe(1);
 
     Event::assertDispatched(VoteCast::class);
 });
@@ -56,7 +65,7 @@ it('toggles off an existing vote when the same value is cast again', function ()
 
     expect($result)->toBeNull();
     expect($this->post->fresh()->score)->toBe(0);
-    expect(Vote::query()->where('post_id', $this->post->id)->count())->toBe(0);
+    expect(forumVoteCount($this->post))->toBe(0);
 
     Event::assertDispatched(VoteRevoked::class);
 });
@@ -68,7 +77,7 @@ it('updates an existing vote when the opposite value is cast', function () {
     $this->post->vote($this->voter, VoteValue::Down);
 
     expect($this->post->fresh()->score)->toBe(-1);
-    expect(Vote::query()->where('post_id', $this->post->id)->count())->toBe(1);
+    expect(forumVoteCount($this->post))->toBe(1);
 });
 
 it('rejects a self-vote when allow_self_vote is disabled', function () {
@@ -77,7 +86,7 @@ it('rejects a self-vote when allow_self_vote is disabled', function () {
     $result = $this->post->vote($this->author, VoteValue::Up);
 
     expect($result)->toBeNull();
-    expect(Vote::query()->count())->toBe(0);
+    expect(forumVoteCount($this->post))->toBe(0);
     expect($this->post->fresh()->score)->toBe(0);
 });
 
@@ -86,7 +95,7 @@ it('allows a self-vote when allow_self_vote is enabled', function () {
 
     $result = $this->post->vote($this->author, VoteValue::Up);
 
-    expect($result)->toBeInstanceOf(Vote::class);
+    expect($result)->toBeInstanceOf(Interaction::class);
     expect($this->post->fresh()->score)->toBe(1);
 });
 

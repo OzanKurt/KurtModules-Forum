@@ -20,6 +20,7 @@ use Kurt\Modules\Core\Support\FilamentVersion;
 use Kurt\Modules\Core\Testing\PackageTestCase;
 use Kurt\Modules\Forum\Providers\ForumServiceProvider;
 use Kurt\Modules\Forum\Tests\Fixtures\AdminPanelProvider;
+use Kurt\Modules\Interactions\Providers\InteractionsServiceProvider;
 use Livewire\LivewireServiceProvider;
 use Spatie\MediaLibrary\MediaLibraryServiceProvider;
 
@@ -50,6 +51,7 @@ abstract class TestCase extends PackageTestCase
         return array_merge([
             SluggableServiceProvider::class,
             MediaLibraryServiceProvider::class,
+            InteractionsServiceProvider::class,
             ForumServiceProvider::class,
         ], $this->filamentProviders());
     }
@@ -64,6 +66,7 @@ abstract class TestCase extends PackageTestCase
             CoreServiceProvider::class,
             SluggableServiceProvider::class,
             MediaLibraryServiceProvider::class,
+            InteractionsServiceProvider::class,
             ForumServiceProvider::class,
         ], $this->filamentProviders());
     }
@@ -121,6 +124,7 @@ abstract class TestCase extends PackageTestCase
         parent::defineDatabaseMigrations();
 
         $this->loadMigrationsFrom(__DIR__.'/migrations');
+        $this->loadMigrationsFrom(dirname((new \ReflectionClass(InteractionsServiceProvider::class))->getFileName(), 3).'/database/migrations');
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
     }
 }

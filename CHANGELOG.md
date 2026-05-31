@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-05-31
+
+### Changed
+- Post voting is now stored by the **Interactions** module
+  (`ozankurt/laravel-modules-interactions`) instead of the standalone
+  `forum_votes` table. `Post` uses the `Voteable` trait and `Post::vote()`
+  routes through Interactions' `InteractionManager`, preserving the self-vote
+  guard, toggle semantics, `VoteCast`/`VoteRevoked` events, and `score`/`Thread`
+  denormalization.
+- `HundredUpvotesBadge`, `ThreadCounters`, and `forum:award-badges` now read
+  votes from `interactions_interactions`.
+
+### Removed
+- `Forum\Models\Vote` and its factory; the `forum_votes` table is migrated into
+  `interactions_interactions` and dropped by
+  `2026_05_31_000300_migrate_forum_votes_to_interactions`.
+
+### Note
+- `VoteCast` now carries `(Post $post, VoteValue $value)` instead of a `Vote`.
+
 ## [2.1.0] - 2026-05-30
 
 ### Added

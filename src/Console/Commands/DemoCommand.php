@@ -10,7 +10,6 @@ use Kurt\Modules\Forum\Enums\VoteValue;
 use Kurt\Modules\Forum\Models\Board;
 use Kurt\Modules\Forum\Models\Post;
 use Kurt\Modules\Forum\Models\Thread;
-use Kurt\Modules\Forum\Models\Vote;
 
 final class DemoCommand extends Command
 {
@@ -42,10 +41,14 @@ final class DemoCommand extends Command
                     'user_id' => $ownerId,
                 ]);
 
-                Vote::factory()->create([
-                    'post_id' => $opPost->id,
+                DB::table('interactions_interactions')->insert([
                     'user_id' => $ownerId,
+                    'subject_type' => Post::class,
+                    'subject_id' => $opPost->id,
+                    'type' => 'vote',
                     'value' => VoteValue::Up->value,
+                    'created_at' => now(),
+                    'updated_at' => now(),
                 ]);
             });
 

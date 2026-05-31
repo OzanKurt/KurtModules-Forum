@@ -27,12 +27,14 @@ final class ThreadCounters
             ->whereNull('deleted_at')
             ->count();
 
-        $rootScore = (int) DB::table('forum_votes')
-            ->join('forum_posts', 'forum_posts.id', '=', 'forum_votes.post_id')
+        $rootScore = (int) DB::table('interactions_interactions')
+            ->join('forum_posts', 'forum_posts.id', '=', 'interactions_interactions.subject_id')
+            ->where('interactions_interactions.subject_type', Post::class)
+            ->where('interactions_interactions.type', 'vote')
             ->where('forum_posts.thread_id', $thread->id)
             ->where('forum_posts.is_root', true)
             ->whereNull('forum_posts.deleted_at')
-            ->sum('forum_votes.value');
+            ->sum('interactions_interactions.value');
 
         $latest = DB::table('forum_posts')
             ->where('thread_id', $thread->id)
@@ -86,7 +88,11 @@ final class ThreadCounters
      */
     public static function recountPost(Post $post): void
     {
-        $score = (int) DB::table('forum_votes')->where('post_id', $post->id)->sum('value');
+        $score = (int) DB::table('interactions_interactions')
+            ->where('subject_type', Post::class)
+            ->where('subject_id', $post->id)
+            ->where('type', 'vote')
+            ->sum('value');
         $post->forceFill(['score' => $score])->save();
     }
 }
