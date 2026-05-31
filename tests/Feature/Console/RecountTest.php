@@ -42,7 +42,7 @@ it('rebuilds Board.thread_count + Board.post_count after corruption', function (
     expect(Thread::find($thread1->id)->reply_count)->toBe(2);
 });
 
-it('rebuilds Post.score from raw forum_votes rows', function () {
+it('rebuilds Post.score from raw vote rows in Interactions', function () {
     /** @var Board $board */
     $board = Board::factory()->create();
     /** @var Thread $thread */
@@ -50,10 +50,10 @@ it('rebuilds Post.score from raw forum_votes rows', function () {
     /** @var Post $post */
     $post = Post::create(['thread_id' => $thread->id, 'user_id' => $this->user->id, 'body' => 'op', 'is_root' => true]);
 
-    DB::table('forum_votes')->insert([
-        ['post_id' => $post->id, 'user_id' => StubUser::create(['email' => 'v1@x.com'])->id, 'value' => 1, 'created_at' => now(), 'updated_at' => now()],
-        ['post_id' => $post->id, 'user_id' => StubUser::create(['email' => 'v2@x.com'])->id, 'value' => 1, 'created_at' => now(), 'updated_at' => now()],
-        ['post_id' => $post->id, 'user_id' => StubUser::create(['email' => 'v3@x.com'])->id, 'value' => -1, 'created_at' => now(), 'updated_at' => now()],
+    DB::table('interactions_interactions')->insert([
+        ['user_id' => StubUser::create(['email' => 'v1@x.com'])->id, 'subject_type' => Post::class, 'subject_id' => $post->id, 'type' => 'vote', 'value' => 1, 'created_at' => now(), 'updated_at' => now()],
+        ['user_id' => StubUser::create(['email' => 'v2@x.com'])->id, 'subject_type' => Post::class, 'subject_id' => $post->id, 'type' => 'vote', 'value' => 1, 'created_at' => now(), 'updated_at' => now()],
+        ['user_id' => StubUser::create(['email' => 'v3@x.com'])->id, 'subject_type' => Post::class, 'subject_id' => $post->id, 'type' => 'vote', 'value' => -1, 'created_at' => now(), 'updated_at' => now()],
     ]);
 
     // Corrupt score.
