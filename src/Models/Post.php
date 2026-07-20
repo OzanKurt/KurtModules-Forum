@@ -192,6 +192,14 @@ class Post extends Model implements HasMedia
         });
     }
 
+    /**
+     * Whether this post is the accepted answer of its thread.
+     */
+    public function isSolution(): bool
+    {
+        return $this->thread->solution_post_id === $this->id;
+    }
+
     public function refreshScore(): int
     {
         $score = (int) $this->votes()->sum('value');

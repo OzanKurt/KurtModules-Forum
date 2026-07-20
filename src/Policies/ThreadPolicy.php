@@ -38,4 +38,19 @@ final class ThreadPolicy
     {
         return ! $thread->is_locked && ! $thread->is_hidden;
     }
+
+    /**
+     * Marking/clearing the accepted answer is limited to the thread author.
+     * Moderators are already granted everything by before() via the
+     * `canModerateForum` gate.
+     */
+    public function markSolution(Authenticatable $user, Thread $thread): bool
+    {
+        return (int) $user->getAuthIdentifier() === $thread->user_id;
+    }
+
+    public function unmarkSolution(Authenticatable $user, Thread $thread): bool
+    {
+        return $this->markSolution($user, $thread);
+    }
 }

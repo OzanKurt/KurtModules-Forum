@@ -37,13 +37,63 @@ php artisan migrate
 - Models: `Board`, `Thread`, `Post`, `Vote`, `Subscription`, `ModerationReport`, `Badge`, `UserBadge`.
 - Enums: `BoardState`, `Visibility`, `VoteValue`, `ReportState`, `BadgeRarity`.
 - `Thread::reply(User, body, ?Post $parent)` — atomic counter increments inside a transaction; dispatches `ThreadReplied`. `PostCreated` fires from the observer.
+- `Thread::markSolution(Post)` / `unmarkSolution()` — set/clear the thread's accepted answer (`solution_post_id`); dispatch `SolutionMarked` / `SolutionUnmarked`; guarded by the `markSolution`/`unmarkSolution` policy abilities (thread author, or a moderator via `canModerateForum`). `Post::isSolution()` and the `Thread` `solved()`/`unsolved()` scopes read the state.
+- `Thread::search(term)` — find threads by title or post body, distinct and ranked (title matches first, then most recent).
 - `Post::vote(User, VoteValue)` — idempotent + toggling (cast same value twice removes the vote).
 - `Post::report(User, reason, ?notes)` — opens a `ModerationReport` and bumps `reported_count`.
 - `Thread::subscribe(User)` / `unsubscribe(User)` — polymorphic, idempotent.
 - Pluggable badge engine: implement `Kurt\Modules\Forum\Badges\BadgeRule` and register the class in `config('forum.badges.rules')`. `BadgeAwarder::handleEvent($event)` runs every rule whose `appliesAfter()` lists the event class and writes a `UserBadge` row exactly once thanks to the unique `(user_id, badge_id)` index.
 - Policies (`BoardPolicy`, `ThreadPolicy`, `PostPolicy`, `ModerationReportPolicy`) with a global `canModerateForum` gate bypass.
 - Console commands: `forum:recount`, `forum:award-badges {--user=}`, `forum:demo`.
-- Domain events: `ThreadCreated/Locked/Pinned/Hidden/Moved/Replied`, `PostCreated/Edited/Deleted/Hidden/Reported/ScoreChanged`, `VoteCast/Revoked`, `SubscriptionCreated/Removed`, `BadgeAwarded`, `ModerationReportSubmitted/Resolved/Dismissed`.
+- Domain events: `ThreadCreated/Locked/Pinned/Hidden/Moved/Replied`, `SolutionMarked/Unmarked`, `PostCreated/Edited/Deleted/Hidden/Reported/ScoreChanged`, `VoteCast/Revoked`, `SubscriptionCreated/Removed`, `BadgeAwarded`, `ModerationReportSubmitted/Resolved/Dismissed`.
+
+## Best answer (solutions)
+
+A thread can mark one of its own posts as the accepted answer. The pointer lives
+in `forum_threads.solution_post_id` (nullable FK to `forum_posts`, cleared if the
+post is hard-deleted), so it is the single source of truth — no denormalised flag
+to drift.
+
+```php
+$thread->markSolution($post);   // dispatches SolutionMarked; idempotent
+$post->isSolution();            // true
+$thread->unmarkSolution();      // dispatches SolutionUnmarked with the previous post
+
+Thread::query()->solved()->get();
+Thread::query()->unsolved()->get();
+```
+
+`markSolution()` rejects a post from another thread (`SolutionPostMismatchException`).
+Authorization is handled by the `markSolution` / `unmarkSolution` policy abilities:
+the thread author, or any user granted the `canModerateForum` gate.
+
+```php
+if (Gate::allows('markSolution', $thread)) {
+    $thread->markSolution($post);
+}
+```
+
+## Search
+
+`Thread::search(string $term)` matches thread titles and their posts' bodies and
+returns **distinct** threads (one row per thread via a correlated `EXISTS`, so a
+thread with many matching posts still appears once), ranked with title matches
+first, then most-recently-active.
+
+```php
+Thread::query()->search('redis caching')->paginate();
+```
+
+The scope is portable: on **MySQL/MariaDB** it uses `MATCH ... AGAINST` (FULLTEXT)
+and everywhere else (including the sqlite the test suite runs on) it falls back to
+a `LIKE` query — same results, no configuration needed.
+
+The FULLTEXT indexes it relies on are added by an **optional** migration,
+`add_fulltext_search_indexes_to_forum`, on `forum_threads.title` and
+`forum_posts.body`. That migration is a **no-op on any non-MySQL/MariaDB driver**
+(so it is safe on sqlite/pgsql), and the `LIKE` fallback means search works with
+or without it. Publish and run it if you are on MySQL/MariaDB and want the faster
+FULLTEXT path.
 
 ## Denormalisation + recount
 
