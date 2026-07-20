@@ -29,7 +29,7 @@ final class ThreadCounters
 
         $rootScore = (int) DB::table('interactions_interactions')
             ->join('forum_posts', 'forum_posts.id', '=', 'interactions_interactions.subject_id')
-            ->where('interactions_interactions.subject_type', Post::class)
+            ->where('interactions_interactions.subject_type', (new Post)->getMorphClass())
             ->where('interactions_interactions.type', 'vote')
             ->where('forum_posts.thread_id', $thread->id)
             ->where('forum_posts.is_root', true)
@@ -89,7 +89,7 @@ final class ThreadCounters
     public static function recountPost(Post $post): void
     {
         $score = (int) DB::table('interactions_interactions')
-            ->where('subject_type', Post::class)
+            ->where('subject_type', (new Post)->getMorphClass())
             ->where('subject_id', $post->id)
             ->where('type', 'vote')
             ->sum('value');

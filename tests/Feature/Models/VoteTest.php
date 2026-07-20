@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
 use Kurt\Modules\Forum\Enums\VoteValue;
+use Kurt\Modules\Forum\Events\PostScoreChanged;
 use Kurt\Modules\Forum\Events\VoteCast;
 use Kurt\Modules\Forum\Events\VoteRevoked;
 use Kurt\Modules\Forum\Models\Board;
@@ -97,6 +98,17 @@ it('allows a self-vote when allow_self_vote is enabled', function () {
 
     expect($result)->toBeInstanceOf(Interaction::class);
     expect($this->post->fresh()->score)->toBe(1);
+});
+
+it('dispatches PostScoreChanged when the score is refreshed', function () {
+    Event::fake([PostScoreChanged::class]);
+
+    $this->post->vote($this->voter, VoteValue::Up);
+
+    Event::assertDispatched(
+        PostScoreChanged::class,
+        fn (PostScoreChanged $event): bool => $event->post->is($this->post),
+    );
 });
 
 it('keeps Thread.score in sync with the root post score', function () {
