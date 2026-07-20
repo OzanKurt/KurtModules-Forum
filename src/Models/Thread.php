@@ -41,6 +41,8 @@ use Kurt\Modules\Forum\Exceptions\ThreadLockedException;
  * @property int|null $last_post_id
  * @property CarbonInterface|null $last_post_at
  * @property int|null $solution_post_id
+ * @property CarbonInterface|null $created_at
+ * @property CarbonInterface|null $updated_at
  * @property Board $board
  * @property Collection<int, Post> $posts
  * @property Post|null $rootPost

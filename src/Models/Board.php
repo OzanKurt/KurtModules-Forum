@@ -30,6 +30,8 @@ use Spatie\Translatable\HasTranslations;
  * @property int $thread_count
  * @property int $post_count
  * @property CarbonInterface|null $last_post_at
+ * @property CarbonInterface|null $created_at
+ * @property CarbonInterface|null $updated_at
  * @property Board|null $parent
  * @property Collection<int, Board> $children
  * @property Collection<int, Thread> $threads

@@ -21,6 +21,26 @@ return [
     'post_max_body_length' => 30_000,
     'allow_self_vote' => false,
 
+    /*
+    |--------------------------------------------------------------------------
+    | HTTP / REST API
+    |--------------------------------------------------------------------------
+    |
+    | Drives the out-of-the-box JSON API (Core's API kit). Safe by default:
+    | `headless` registers nothing. Set FORUM_HTTP_MODE=api (or `ui`) to expose
+    | the endpoints. Read routes are public; write routes get `auth_middleware`
+    | and are policy-guarded. Every route is throttled by the `forum-api`
+    | limiter built from `rate_limit` ("maxAttempts,decayMinutes").
+    |
+    */
+    'http' => [
+        'mode' => env('FORUM_HTTP_MODE', 'headless'),
+        'prefix' => 'api/forum',
+        'middleware' => ['api'],
+        'auth_middleware' => ['auth'],
+        'rate_limit' => '60,1',
+    ],
+
     'media' => [
         'disk' => env('FORUM_MEDIA_DISK', 'public'),
     ],

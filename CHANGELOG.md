@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Out-of-the-box JSON **REST API** built on the Core API kit (requires
+  `ozankurt/laravel-modules-core` `^2.2`). Safe by default: gated by
+  `forum.http.mode` (`FORUM_HTTP_MODE`), which stays `headless` unless set to
+  `api`/`ui`. Reads are public; writes require auth and are enforced by the
+  existing Policies via `$this->authorize()`. Every route is throttled by the
+  `forum-api` limiter and named under `forum.api.`.
+- Board, Thread and Post API controllers (`src/Http/Controllers/Api`), API
+  Resources (`src/Http/Resources`), FormRequests (`src/Http/Requests`) and
+  `routes/api.php`, wired via `ForumServiceProvider::registerModuleApi()`.
+- Endpoints: board index/show + moderator CRUD; thread index (filter
+  board/author/solved, sort created_at/last_post/replies, paginate), show,
+  store/update/destroy, `search`, `markSolution`/`unmarkSolution`,
+  `subscribe`/`unsubscribe`; per-thread reply index + store, post update/destroy,
+  and `vote`/`unvote`.
+- `Post::unvote()` domain method (removes the caller's vote, dispatches
+  `VoteRevoked`); `ThreadPolicy::updateThread`/`deleteThread` and
+  `BoardPolicy::createBoard`/`updateBoard`/`deleteBoard` abilities.
+
 ## [2.2.0] - 2026-05-31
 
 ### Changed
