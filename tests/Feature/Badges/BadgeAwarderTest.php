@@ -3,11 +3,14 @@
 declare(strict_types=1);
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Events\CallQueuedListener;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 use Kurt\Modules\Forum\Badges\BadgeAwarder;
 use Kurt\Modules\Forum\Badges\BadgeRule;
 use Kurt\Modules\Forum\Events\BadgeAwarded;
 use Kurt\Modules\Forum\Events\PostCreated;
+use Kurt\Modules\Forum\Listeners\AwardBadges;
 use Kurt\Modules\Forum\Models\Badge;
 use Kurt\Modules\Forum\Models\Board;
 use Kurt\Modules\Forum\Models\Post;
@@ -83,6 +86,72 @@ it('dispatches BadgeAwarded when the rule fires', function () {
         return $event->badge->slug === 'first-post'
             && $event->user->getKey() === $user->getKey();
     });
+});
+
+it('queues the AwardBadges listener for badge events instead of running it inline', function () {
+    Queue::fake();
+
+    $user = StubUser::create(['email' => 'queued@example.com']);
+
+    /** @var Board $board */
+    $board = Board::factory()->create();
+    /** @var Thread $thread */
+    $thread = Thread::factory()->create([
+        'board_id' => $board->id,
+        'user_id' => $user->id,
+    ]);
+
+    // Post::create dispatches PostCreated, which the provider routes to the
+    // ShouldQueue AwardBadges listener. Being queued (rather than run inline in
+    // the caller's transaction) is what keeps a badge failure from rolling the
+    // user's action back.
+    Post::create([
+        'thread_id' => $thread->id,
+        'user_id' => $user->id,
+        'body' => 'Hello world',
+        'is_root' => true,
+    ]);
+
+    Queue::assertPushed(CallQueuedListener::class, function (CallQueuedListener $job): bool {
+        return $job->class === AwardBadges::class;
+    });
+});
+
+it('is idempotent under a concurrent duplicate award (firstOrCreate, no throw)', function () {
+    $user = StubUser::create(['email' => 'concurrent@example.com']);
+
+    $badge = Badge::factory()->create([
+        'slug' => 'first-post',
+        'name' => ['en' => 'First Post'],
+        'description' => ['en' => 'Posted for the first time.'],
+    ]);
+
+    /** @var Board $board */
+    $board = Board::factory()->create();
+    /** @var Thread $thread */
+    $thread = Thread::factory()->create([
+        'board_id' => $board->id,
+        'user_id' => $user->id,
+    ]);
+
+    $post = Post::create([
+        'thread_id' => $thread->id,
+        'user_id' => $user->id,
+        'body' => 'Hello world',
+        'is_root' => true,
+    ]);
+
+    // Simulate a racing award landing first, then run the awarder: firstOrCreate
+    // must resolve to the existing row instead of raising a unique violation.
+    UserBadge::query()->firstOrCreate(
+        ['user_id' => $user->id, 'badge_id' => $badge->id],
+        ['awarded_at' => now()],
+    );
+
+    $awarder = app(BadgeAwarder::class);
+    $awarder->handleEvent(new PostCreated($post));
+
+    expect(UserBadge::query()->where('user_id', $user->id)->where('badge_id', $badge->id)->count())->toBe(1);
 });
 
 it('registers a custom rule via BadgeAwarder::register', function () {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Event;
 use Kurt\Modules\Forum\Events\SubscriptionCreated;
 use Kurt\Modules\Forum\Events\SubscriptionRemoved;
+use Kurt\Modules\Forum\Events\ThreadReplied;
 use Kurt\Modules\Forum\Models\Board;
 use Kurt\Modules\Forum\Models\Subscription;
 use Kurt\Modules\Forum\Models\Thread;
@@ -49,4 +50,22 @@ it('unsubscribes a user and fires SubscriptionRemoved', function () {
 
 it('returns false when unsubscribe is called on a non-subscriber', function () {
     expect($this->thread->unsubscribe($this->user))->toBeFalse();
+});
+
+it('fires ThreadReplied on a subscribed thread so subscribers can be notified', function () {
+    $replier = StubUser::create(['email' => 'replier-sub@example.com']);
+
+    $this->thread->subscribe($this->user);
+
+    Event::fake([ThreadReplied::class]);
+
+    $reply = $this->thread->reply($replier, 'New activity on your subscribed thread');
+
+    // A live subscription still exists to be notified, and the reply signal fired.
+    expect($this->thread->subscriptions()->count())->toBe(1);
+
+    Event::assertDispatched(ThreadReplied::class, function (ThreadReplied $event) use ($reply): bool {
+        return $event->post->id === $reply->id
+            && $event->thread->id === $this->thread->id;
+    });
 });

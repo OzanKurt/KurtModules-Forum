@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
 use Kurt\Modules\Forum\Events\ThreadReplied;
+use Kurt\Modules\Forum\Exceptions\ThreadLockedException;
 use Kurt\Modules\Forum\Models\Board;
 use Kurt\Modules\Forum\Models\Post;
 use Kurt\Modules\Forum\Models\Thread;
@@ -63,6 +64,18 @@ it('returns a Post created with the given parent', function () {
     $nested = $this->thread->reply($this->replier, 'Nested', $first);
 
     expect($nested->parent_id)->toBe($first->id);
+});
+
+it('rejects replies to a locked thread and writes nothing', function () {
+    $this->thread->forceFill(['is_locked' => true])->save();
+
+    expect(fn () => $this->thread->reply($this->replier, 'Should not post'))
+        ->toThrow(ThreadLockedException::class);
+
+    // No post row and no counter movement on either the thread or the board.
+    expect(Post::query()->where('thread_id', $this->thread->id)->count())->toBe(0);
+    expect($this->thread->fresh()->reply_count)->toBe(0);
+    expect($this->board->fresh()->post_count)->toBe(0);
 });
 
 it('produces the same counters under sequential concurrent transactions', function () {
