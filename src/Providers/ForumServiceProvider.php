@@ -100,5 +100,9 @@ final class ForumServiceProvider extends PackageServiceProvider
         $gate->policy(Thread::class, ThreadPolicy::class);
         $gate->policy(Post::class, PostPolicy::class);
         $gate->policy(ModerationReport::class, ModerationReportPolicy::class);
+
+        // Register the REST API surface. A no-op unless forum.http.mode is
+        // api/ui, so the module stays headless by default.
+        $this->registerModuleApi(__DIR__.'/../../routes/api.php');
     }
 }

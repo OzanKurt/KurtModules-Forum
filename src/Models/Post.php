@@ -156,6 +156,28 @@ class Post extends Model implements HasMedia
     }
 
     /**
+     * Remove this user's vote, if any. Idempotent: returns false when the user
+     * had not voted. Dispatches `VoteRevoked` when a vote is actually removed.
+     */
+    public function unvote(Model $user): bool
+    {
+        return DB::transaction(function () use ($user): bool {
+            /** @var Interaction|null $existing */
+            $existing = $this->votes()->where('user_id', $user->getKey())->first();
+
+            if ($existing === null) {
+                return false;
+            }
+
+            app(InteractionManager::class)->remove($user, $this, InteractionType::Vote);
+            $this->refreshScore();
+            VoteRevoked::dispatch($this, $user);
+
+            return true;
+        });
+    }
+
+    /**
      * Submit a moderation report against this post.
      *
      * Idempotent per reporter: a reporter that has already reported this post

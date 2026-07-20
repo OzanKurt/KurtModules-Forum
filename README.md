@@ -117,6 +117,81 @@ interface BadgeRule
 
 `ForumServiceProvider` binds `BadgeAwarder` as a singleton, populates it from `config('forum.badges.rules')`, and listens to every dispatched event via a wildcard `Event::listen('*', ...)`. Inside `handleEvent`, the awarder iterates rules, resolves the user from the event payload, checks `UserBadge` for an existing award, and inserts a row plus dispatches `BadgeAwarded` if the rule evaluates true.
 
+## API
+
+The module ships an out-of-the-box JSON REST API built on the Core **API kit**.
+It is **safe by default**: nothing is registered until you opt in.
+
+### Enabling it
+
+The surface is gated by `forum.http.mode` (`headless` | `api` | `ui`). Set the
+env var to expose it:
+
+```dotenv
+FORUM_HTTP_MODE=api
+```
+
+`headless` (the default) registers **no routes**; `api` and `ui` register the
+endpoints below. The relevant `config/forum.php` block:
+
+```php
+'http' => [
+    'mode' => env('FORUM_HTTP_MODE', 'headless'),
+    'prefix' => 'api/forum',
+    'middleware' => ['api'],           // base middleware for every route
+    'auth_middleware' => ['auth'],     // appended to write routes
+    'rate_limit' => '60,1',            // "maxAttempts,decayMinutes" for the forum-api throttle
+],
+```
+
+Every route is throttled by the named `forum-api` limiter (keyed by user id, or
+client IP for guests) and named under the `forum.api.` prefix
+(e.g. `route('forum.api.threads.index')`).
+
+### Auth & policies
+
+Reads are **public**; writes require authentication (the `auth_middleware`) and
+are authorized by the module's **Policies** via `$this->authorize()` in the
+controllers — the same policies used by the Filament admin. Guests hitting a
+write route get `401`; an authenticated but unauthorized user gets `403`.
+Moderators (granted the `canModerateForum` gate) bypass ownership checks.
+
+Responses use the Core envelope: `{ "data": ... }` for single resources,
+`{ "data": [...], "meta": { "pagination": ... } }` for collections, and
+`{ "message": ..., "errors": ... }` for failures.
+
+### Endpoints
+
+All paths are relative to the `api/forum` prefix.
+
+| Method | Path | Auth | Policy | Description |
+|---|---|---|---|---|
+| GET | `boards` | – | – | List boards (guests see public boards only) |
+| GET | `boards/{board}` | – | `viewBoard` | Show a board |
+| POST | `boards` | ✓ | `createBoard` (moderator) | Create a board |
+| PATCH | `boards/{board}` | ✓ | `updateBoard` (moderator) | Update a board |
+| DELETE | `boards/{board}` | ✓ | `deleteBoard` (moderator) | Delete a board |
+| GET | `threads` | – | – | List threads — `filter[board\|author\|solved]`, `sort=created_at\|last_post\|replies` (prefix `-` for desc), `per_page`, `page` |
+| GET | `threads/search?q=` | – | – | Full-text/`LIKE` search over titles + post bodies |
+| GET | `threads/{thread}` | – | `viewThread` | Show a thread (with board + root post) |
+| POST | `threads` | ✓ | `createThread` (board open) | Create a thread + its root post |
+| PATCH | `threads/{thread}` | ✓ | `updateThread` (author) | Update a thread title |
+| DELETE | `threads/{thread}` | ✓ | `deleteThread` (author) | Delete a thread |
+| POST | `threads/{thread}/solution` | ✓ | `markSolution` (author) | Mark a post (`post_id`) as the answer |
+| DELETE | `threads/{thread}/solution` | ✓ | `unmarkSolution` (author) | Clear the accepted answer |
+| POST | `threads/{thread}/subscribe` | ✓ | `viewThread` | Subscribe to a thread |
+| DELETE | `threads/{thread}/subscribe` | ✓ | – | Unsubscribe from a thread |
+| GET | `threads/{thread}/posts` | – | `viewThread` | List a thread's replies (paginated) |
+| POST | `threads/{thread}/posts` | ✓ | `replyToThread` | Post a reply (`body`, optional `parent_id`) |
+| PATCH | `posts/{post}` | ✓ | `editPost` (author, edit window) | Edit a reply |
+| DELETE | `posts/{post}` | ✓ | `deletePost` (author) | Delete a reply |
+| POST | `posts/{post}/vote` | ✓ | `votePost` | Vote (`value=up\|down`) |
+| DELETE | `posts/{post}/vote` | ✓ | `votePost` | Remove your vote |
+
+Controllers stay thin over the existing domain (`Thread::reply/markSolution/subscribe`,
+`Post::vote/unvote`, …), so the same events, counters, and badge rules fire
+whether an action comes through the API, Filament, or your own code.
+
 ## Filament admin
 
 The package ships parallel admin resource sets for Filament **v3, v4, and v5** —

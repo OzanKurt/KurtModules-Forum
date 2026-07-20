@@ -40,6 +40,20 @@ final class ThreadPolicy
     }
 
     /**
+     * Editing a thread is limited to its author. Moderators are already granted
+     * everything by before() via the `canModerateForum` gate.
+     */
+    public function updateThread(Authenticatable $user, Thread $thread): bool
+    {
+        return (int) $user->getAuthIdentifier() === $thread->user_id;
+    }
+
+    public function deleteThread(Authenticatable $user, Thread $thread): bool
+    {
+        return $this->updateThread($user, $thread);
+    }
+
+    /**
      * Marking/clearing the accepted answer is limited to the thread author.
      * Moderators are already granted everything by before() via the
      * `canModerateForum` gate.

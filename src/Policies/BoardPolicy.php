@@ -40,4 +40,24 @@ final class BoardPolicy
     {
         return $board->state === BoardState::Open;
     }
+
+    /**
+     * Board management (create/update/delete) is moderator-only. Moderators are
+     * short-circuited to allowed by before() via the `canModerateForum` gate;
+     * everyone else is denied here.
+     */
+    public function createBoard(Authenticatable $user): bool
+    {
+        return false;
+    }
+
+    public function updateBoard(Authenticatable $user, Board $board): bool
+    {
+        return false;
+    }
+
+    public function deleteBoard(Authenticatable $user, Board $board): bool
+    {
+        return false;
+    }
 }
