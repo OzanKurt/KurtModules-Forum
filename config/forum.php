@@ -14,7 +14,6 @@ use Kurt\Modules\Forum\Models\Post;
 use Kurt\Modules\Forum\Models\Subscription;
 use Kurt\Modules\Forum\Models\Thread;
 use Kurt\Modules\Forum\Models\UserBadge;
-use Kurt\Modules\Forum\Models\Vote;
 
 return [
     'edit_window_minutes' => 60,
@@ -44,6 +43,5 @@ return [
         'subscription' => Subscription::class,
         'thread' => Thread::class,
         'user_badge' => UserBadge::class,
-        'vote' => Vote::class,
     ],
 ];

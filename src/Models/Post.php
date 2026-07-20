@@ -19,6 +19,7 @@ use Kurt\Modules\Core\Concerns\ResolvesUser;
 use Kurt\Modules\Forum\Enums\ReportState;
 use Kurt\Modules\Forum\Enums\VoteValue;
 use Kurt\Modules\Forum\Events\PostReported;
+use Kurt\Modules\Forum\Events\PostScoreChanged;
 use Kurt\Modules\Forum\Events\VoteCast;
 use Kurt\Modules\Forum\Events\VoteRevoked;
 use Kurt\Modules\Interactions\Engagement\Concerns\Voteable;
@@ -155,23 +156,37 @@ class Post extends Model implements HasMedia
     }
 
     /**
-     * Submit a moderation report against this post; bumps reported_count.
+     * Submit a moderation report against this post.
+     *
+     * Idempotent per reporter: a reporter that has already reported this post
+     * gets their existing report back without bumping reported_count or
+     * re-dispatching. Self-reports are rejected as a no-op (returns null).
      */
-    public function report(Model $reporter, string $reason, ?string $notes = null): ModerationReport
+    public function report(Model $reporter, string $reason, ?string $notes = null): ?ModerationReport
     {
+        if ($this->user_id === $reporter->getKey()) {
+            return null;
+        }
+
         return DB::transaction(function () use ($reporter, $reason, $notes): ModerationReport {
             /** @var ModerationReport $report */
-            $report = ModerationReport::query()->create([
-                'post_id' => $this->id,
-                'reporter_id' => $reporter->getKey(),
-                'reason' => $reason,
-                'notes' => $notes,
-                'state' => ReportState::Pending->value,
-            ]);
+            $report = ModerationReport::query()->firstOrCreate(
+                [
+                    'post_id' => $this->id,
+                    'reporter_id' => $reporter->getKey(),
+                ],
+                [
+                    'reason' => $reason,
+                    'notes' => $notes,
+                    'state' => ReportState::Pending->value,
+                ],
+            );
 
-            $this->forceFill(['reported_count' => $this->reported_count + 1])->save();
+            if ($report->wasRecentlyCreated) {
+                $this->forceFill(['reported_count' => $this->reported_count + 1])->save();
 
-            PostReported::dispatch($report);
+                PostReported::dispatch($report);
+            }
 
             return $report;
         });
@@ -186,6 +201,8 @@ class Post extends Model implements HasMedia
             // Keep Thread.score in sync with root post score.
             Thread::query()->whereKey($this->thread_id)->update(['score' => $score]);
         }
+
+        PostScoreChanged::dispatch($this);
 
         return $score;
     }

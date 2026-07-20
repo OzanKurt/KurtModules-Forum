@@ -33,16 +33,23 @@ final class ForumServiceProvider extends PackageServiceProvider
 
     public function configurePackage(Package $package): void
     {
+        $commands = [
+            RecountCommand::class,
+            AwardBadgesCommand::class,
+        ];
+
+        // DemoCommand seeds via factories and bypasses InteractionManager, so
+        // it is dev-only: never register it in production.
+        if ($this->app->environment('local', 'testing')) {
+            $commands[] = DemoCommand::class;
+        }
+
         $package
             ->name('laravel-modules-forum')
             ->hasConfigFile('forum')
             ->hasTranslations()
             ->discoversMigrations()
-            ->hasCommands([
-                RecountCommand::class,
-                AwardBadgesCommand::class,
-                DemoCommand::class,
-            ]);
+            ->hasCommands($commands);
     }
 
     public function packageRegistered(): void
@@ -68,11 +75,21 @@ final class ForumServiceProvider extends PackageServiceProvider
         Post::observe(PostObserver::class);
         Thread::observe(ThreadObserver::class);
 
-        Event::listen('*', function (string $name, array $payload): void {
-            $event = $payload[0] ?? null;
-            if (is_object($event)) {
-                $this->app->make(BadgeAwarder::class)->handleEvent($event);
+        // Only listen to the domain events the registered badge rules actually
+        // target, instead of a global '*' wildcard that fires the awarder for
+        // every framework event in the application.
+        /** @var BadgeAwarder $awarder */
+        $awarder = $this->app->make(BadgeAwarder::class);
+
+        $badgeEvents = [];
+        foreach ($awarder->rules() as $rule) {
+            foreach ($rule->appliesAfter() as $eventClass) {
+                $badgeEvents[$eventClass] = true;
             }
+        }
+
+        Event::listen(array_keys($badgeEvents), function (object $event) use ($awarder): void {
+            $awarder->handleEvent($event);
         });
 
         /** @var Gate $gate */

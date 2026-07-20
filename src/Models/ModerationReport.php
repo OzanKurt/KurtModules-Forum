@@ -73,6 +73,13 @@ class ModerationReport extends Model
 
     public function resolve(Model $handler): void
     {
+        // Only a pending report can be handled; ignore an already-handled one
+        // so handled_at/handled_by are never overwritten and the event is not
+        // re-dispatched.
+        if ($this->state !== ReportState::Pending) {
+            return;
+        }
+
         $this->forceFill([
             'state' => ReportState::Resolved->value,
             'handled_at' => now(),
@@ -84,6 +91,10 @@ class ModerationReport extends Model
 
     public function dismiss(Model $handler): void
     {
+        if ($this->state !== ReportState::Pending) {
+            return;
+        }
+
         $this->forceFill([
             'state' => ReportState::Dismissed->value,
             'handled_at' => now(),
