@@ -21,6 +21,7 @@ use Kurt\Modules\Core\Concerns\ResolvesUser;
 use Kurt\Modules\Forum\Events\SubscriptionCreated;
 use Kurt\Modules\Forum\Events\SubscriptionRemoved;
 use Kurt\Modules\Forum\Events\ThreadReplied;
+use Kurt\Modules\Forum\Exceptions\ThreadLockedException;
 
 /**
  * @property int $id
@@ -122,9 +123,17 @@ class Thread extends Model
     /**
      * Reply to this thread. Atomically increments reply_count + board.post_count and
      * dispatches `ThreadReplied`. PostObserver dispatches `PostCreated`.
+     *
+     * @throws ThreadLockedException when the thread is locked to further replies.
      */
     public function reply(Model $user, string $body, ?Post $parent = null): Post
     {
+        // Locking is a moderation state that closes the thread to new replies.
+        // Reject the write explicitly instead of silently creating a post.
+        if ($this->is_locked) {
+            throw ThreadLockedException::for($this);
+        }
+
         return DB::transaction(function () use ($user, $body, $parent): Post {
             /** @var Post $post */
             $post = $this->posts()->create([

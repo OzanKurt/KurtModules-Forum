@@ -12,6 +12,7 @@ use Kurt\Modules\Forum\Badges\BadgeRule;
 use Kurt\Modules\Forum\Console\Commands\AwardBadgesCommand;
 use Kurt\Modules\Forum\Console\Commands\DemoCommand;
 use Kurt\Modules\Forum\Console\Commands\RecountCommand;
+use Kurt\Modules\Forum\Listeners\AwardBadges;
 use Kurt\Modules\Forum\Models\Board;
 use Kurt\Modules\Forum\Models\ModerationReport;
 use Kurt\Modules\Forum\Models\Post;
@@ -88,9 +89,10 @@ final class ForumServiceProvider extends PackageServiceProvider
             }
         }
 
-        Event::listen(array_keys($badgeEvents), function (object $event) use ($awarder): void {
-            $awarder->handleEvent($event);
-        });
+        // AwardBadges is a ShouldQueue listener: awarding runs on the queue after
+        // the caller's vote/reply transaction commits, so a badge failure can never
+        // roll the user's action back.
+        Event::listen(array_keys($badgeEvents), AwardBadges::class);
 
         /** @var Gate $gate */
         $gate = $this->app->make(Gate::class);

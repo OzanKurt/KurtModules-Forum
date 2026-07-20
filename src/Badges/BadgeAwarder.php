@@ -60,12 +60,25 @@ final class BadgeAwarder
                 continue;
             }
 
+            // firstOrCreate against the unique (user_id, badge_id) index makes the
+            // award idempotent: a concurrent award of the same badge resolves to the
+            // existing row instead of throwing a unique-constraint violation (which,
+            // if this ran inside the caller's vote/reply transaction, would roll the
+            // whole action back). BadgeAwarded fires only for a genuinely new award.
             /** @var UserBadge $award */
-            $award = UserBadge::query()->create([
-                'user_id' => $user->getKey(),
-                'badge_id' => $badge->id,
-                'awarded_at' => now(),
-            ]);
+            $award = UserBadge::query()->firstOrCreate(
+                [
+                    'user_id' => $user->getKey(),
+                    'badge_id' => $badge->id,
+                ],
+                [
+                    'awarded_at' => now(),
+                ],
+            );
+
+            if (! $award->wasRecentlyCreated) {
+                continue;
+            }
 
             BadgeAwarded::dispatch($user, $badge, $award);
         }
