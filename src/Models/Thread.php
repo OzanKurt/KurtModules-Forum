@@ -18,9 +18,12 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\DB;
 use Kurt\Modules\Core\Concerns\ResolvesUser;
+use Kurt\Modules\Forum\Events\SolutionMarked;
+use Kurt\Modules\Forum\Events\SolutionUnmarked;
 use Kurt\Modules\Forum\Events\SubscriptionCreated;
 use Kurt\Modules\Forum\Events\SubscriptionRemoved;
 use Kurt\Modules\Forum\Events\ThreadReplied;
+use Kurt\Modules\Forum\Exceptions\SolutionPostMismatchException;
 use Kurt\Modules\Forum\Exceptions\ThreadLockedException;
 
 /**
@@ -37,9 +40,11 @@ use Kurt\Modules\Forum\Exceptions\ThreadLockedException;
  * @property int $reply_count
  * @property int|null $last_post_id
  * @property CarbonInterface|null $last_post_at
+ * @property int|null $solution_post_id
  * @property Board $board
  * @property Collection<int, Post> $posts
  * @property Post|null $rootPost
+ * @property Post|null $solutionPost
  * @property Collection<int, Subscription> $subscriptions
  */
 class Thread extends Model
@@ -59,6 +64,7 @@ class Thread extends Model
         'is_pinned', 'is_locked', 'is_hidden',
         'views', 'score', 'reply_count',
         'last_post_id', 'last_post_at',
+        'solution_post_id',
     ];
 
     /** @var array<string, string> */
@@ -110,6 +116,16 @@ class Thread extends Model
     public function rootPost(): HasOne
     {
         return $this->hasOne(Post::class)->where('is_root', true);
+    }
+
+    /**
+     * The post accepted as this thread's answer, if any.
+     *
+     * @return BelongsTo<Post, $this>
+     */
+    public function solutionPost(): BelongsTo
+    {
+        return $this->belongsTo(Post::class, 'solution_post_id');
     }
 
     /**
@@ -210,6 +226,118 @@ class Thread extends Model
         SubscriptionRemoved::dispatch($subscription);
 
         return true;
+    }
+
+    /**
+     * Mark one of this thread's posts as the accepted answer. Idempotent when
+     * the post is already the solution. Dispatches `SolutionMarked`.
+     *
+     * @throws SolutionPostMismatchException when the post belongs to another thread.
+     */
+    public function markSolution(Post $post): void
+    {
+        if ($post->thread_id !== $this->id) {
+            throw SolutionPostMismatchException::for($this, $post);
+        }
+
+        if ($this->solution_post_id === $post->id) {
+            return;
+        }
+
+        $this->forceFill(['solution_post_id' => $post->id])->save();
+
+        SolutionMarked::dispatch($this, $post);
+    }
+
+    /**
+     * Clear this thread's accepted answer. No-op when the thread is unsolved.
+     * Dispatches `SolutionUnmarked` with the previously-marked post.
+     */
+    public function unmarkSolution(): void
+    {
+        if ($this->solution_post_id === null) {
+            return;
+        }
+
+        // Resolve the previous solution before clearing the pointer so the event
+        // can carry it. It may be null if that post row has since been removed.
+        $previous = $this->solutionPost;
+
+        $this->forceFill(['solution_post_id' => null])->save();
+
+        SolutionUnmarked::dispatch($this, $previous);
+    }
+
+    /**
+     * @param  Builder<self>  $q
+     * @return Builder<self>
+     */
+    public function scopeSolved(Builder $q): Builder
+    {
+        return $q->whereNotNull('solution_post_id');
+    }
+
+    /**
+     * @param  Builder<self>  $q
+     * @return Builder<self>
+     */
+    public function scopeUnsolved(Builder $q): Builder
+    {
+        return $q->whereNull('solution_post_id');
+    }
+
+    /**
+     * Search threads by title and their posts' bodies. Returns distinct threads
+     * (one row per thread via a correlated EXISTS, no join fan-out), ranked with
+     * title matches first, then most-recently-active. Uses MySQL/MariaDB FULLTEXT
+     * (MATCH...AGAINST) when the connection supports it, else a portable LIKE.
+     *
+     * @param  Builder<self>  $q
+     * @return Builder<self>
+     */
+    public function scopeSearch(Builder $q, string $term): Builder
+    {
+        $term = trim($term);
+
+        if ($term === '') {
+            // An empty term matches nothing rather than every thread.
+            return $q->whereRaw('1 = 0');
+        }
+
+        $threads = $this->getTable();
+        $posts = (new Post)->getTable();
+        $driver = $q->getModel()->getConnection()->getDriverName();
+        $fullText = in_array($driver, ['mysql', 'mariadb'], true);
+
+        $q->where(function (Builder $sub) use ($term, $threads, $posts, $fullText): void {
+            if ($fullText) {
+                $sub->whereFullText($threads.'.title', $term)
+                    ->orWhereExists(function ($query) use ($term, $threads, $posts): void {
+                        $query->selectRaw('1')
+                            ->from($posts)
+                            ->whereColumn($posts.'.thread_id', $threads.'.id')
+                            ->whereFullText($posts.'.body', $term);
+                    });
+
+                return;
+            }
+
+            $like = '%'.$term.'%';
+
+            $sub->where($threads.'.title', 'like', $like)
+                ->orWhereExists(function ($query) use ($like, $threads, $posts): void {
+                    $query->selectRaw('1')
+                        ->from($posts)
+                        ->whereColumn($posts.'.thread_id', $threads.'.id')
+                        ->where($posts.'.body', 'like', $like);
+                });
+        });
+
+        // Rank title hits above body-only hits, then by recent activity. The LIKE
+        // in the CASE is portable and cheap enough to drive ordering on any driver.
+        return $q
+            ->orderByRaw('(case when '.$threads.'.title like ? then 1 else 0 end) desc', ['%'.$term.'%'])
+            ->orderByDesc($threads.'.last_post_at');
     }
 
     /**
