@@ -6,6 +6,7 @@ namespace Kurt\Modules\Forum\Providers;
 
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Support\Facades\Event;
+use Kurt\Modules\Core\Modules\ModuleManifest;
 use Kurt\Modules\Core\Providers\PackageServiceProvider;
 use Kurt\Modules\Forum\Badges\BadgeAwarder;
 use Kurt\Modules\Forum\Badges\BadgeRule;
@@ -71,8 +72,17 @@ final class ForumServiceProvider extends PackageServiceProvider
         });
     }
 
+    protected function moduleManifest(): ?ModuleManifest
+    {
+        return ModuleManifest::make('forum')
+            ->name('Forum')
+            ->description('Community forum for Laravel: boards, threads, replies, voting, moderation, subscriptions, badges.');
+    }
+
     public function packageBooted(): void
     {
+        parent::packageBooted();
+
         Post::observe(PostObserver::class);
         Thread::observe(ThreadObserver::class);
 
